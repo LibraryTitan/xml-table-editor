@@ -256,6 +256,18 @@ export class XmlTableEditorProvider implements vscode.CustomTextEditorProvider {
 
                 <div id="ctx-menu" class="context-menu"></div>
 
+                <!-- Add Rows/Columns Modal -->
+                <div id="add-modal-overlay" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 10000; justify-content: center; align-items: center;">
+                    <div class="modal-box">
+                        <label class="modal-title" id="add-modal-title">Add Rows</label>
+                        <input type="number" id="add-modal-input" class="modal-input" placeholder="Number to add" value="1" min="1">
+                        <div class="modal-btns">
+                            <button onclick="closeAddModal()">Cancel</button>
+                            <button onclick="submitAdd()">Add</button>
+                        </div>
+                    </div>
+                </div>
+
                 <script>
                     const vscode = acquireVsCodeApi();
                     let currentJson = {};
@@ -277,6 +289,7 @@ export class XmlTableEditorProvider implements vscode.CustomTextEditorProvider {
                     let lastInternalUpdateTime = 0;  // Track when internal update was initiated
                     let activeTableName = null;  // Preserve active table by name, not just index
                     let tabJustPressed = false;  // Flag to prevent Tab from triggering edit mode
+                    let pendingAddType = null;  // 'row' or 'col'
                     
                     // Helper functions to get/set frozen rows/cols per table
                     function getFrozenRows() { return frozenRowsPerTable[activeTableIndex] || 0; }
@@ -954,6 +967,48 @@ export class XmlTableEditorProvider implements vscode.CustomTextEditorProvider {
                         const input = document.getElementById('modal-input');
                         input.style.display = 'block'; // Reset for next use
                     }
+                    
+                    function closeAddModal() {
+                        document.getElementById('add-modal-overlay').style.display = 'none';
+                        pendingAddType = null;
+                    }
+                    
+                    function submitAdd() {
+                        const input = document.getElementById('add-modal-input');
+                        const count = parseInt(input.value);
+                        if (isNaN(count) || count <= 0) {
+                            return;
+                        }
+                        
+                        if (pendingAddType === 'row') {
+                            const t = tables[activeTableIndex];
+                            for (let i = 0; i < count; i++) {
+                                let newRow = {};
+                                if(t.data.length > 0) Object.keys(t.data[0]).forEach(k => { if(!k.startsWith('@_')) newRow[k] = ""; });
+                                else newRow = { "NewColumn": "" };
+                                t.data.push(newRow);
+                            }
+                            updateDocumentInternal(currentJson); 
+                            renderActiveTable();
+                        } else if (pendingAddType === 'col') {
+                            const t = tables[activeTableIndex];
+                            let i = 1, base = "NewColumn";
+                            let existing = (t.data.length > 0) ? Object.keys(t.data[0]) : [];
+                            for (let n = 0; n < count; n++) {
+                                while(existing.includes(base+i)) i++;
+                                let newKey = base+i;
+                                existing.push(newKey);
+                                manualColOrder.push(newKey);
+                                if(t.data.length === 0) t.data.push({ [newKey]: "" });
+                                else t.data.forEach(row => { row[newKey] = ""; });
+                                i++;
+                            }
+                            updateDocumentInternal(currentJson); 
+                            renderActiveTable();
+                        }
+                        
+                        closeAddModal();
+                    }
                     function submitRename() {
                         const newName = document.getElementById('modal-input').value.trim();
                         if (!newName || newName.includes(' ')) { alert('Invalid Name'); return; }
@@ -1231,25 +1286,21 @@ export class XmlTableEditorProvider implements vscode.CustomTextEditorProvider {
                     }
                     window.addRow = function() {
                         if (tables.length === 0) return;
-                        const t = tables[activeTableIndex];
-                        let newRow = {};
-                        if(t.data.length > 0) Object.keys(t.data[0]).forEach(k => { if(!k.startsWith('@_')) newRow[k] = ""; });
-                        else newRow = { "NewColumn": "" };
-                        t.data.push(newRow);
-                        updateDocumentInternal(currentJson); renderActiveTable();
+                        pendingAddType = 'row';
+                        document.getElementById('add-modal-title').innerText = 'Add Rows';
+                        document.getElementById('add-modal-input').value = '1';
+                        document.getElementById('add-modal-overlay').style.display = 'flex';
+                        document.getElementById('add-modal-input').focus();
+                        document.getElementById('add-modal-input').select();
                     }
                     window.addCol = function() {
                          if (tables.length === 0) return;
-                         const t = tables[activeTableIndex];
-                         let i = 1, base = "NewColumn";
-                         let existing = (t.data.length > 0) ? Object.keys(t.data[0]) : [];
-                         while(existing.includes(base+i)) i++;
-                         let newKey = base+i;
-                         manualColOrder.push(newKey);
-                         if(t.data.length === 0) t.data.push({ [newKey]: "" });
-                         else t.data.forEach(row => { row[newKey] = ""; });
-                         isInternalUpdate = true;
-                         updateDocumentInternal(currentJson); renderActiveTable();
+                         pendingAddType = 'col';
+                         document.getElementById('add-modal-title').innerText = 'Add Columns';
+                         document.getElementById('add-modal-input').value = '1';
+                         document.getElementById('add-modal-overlay').style.display = 'flex';
+                         document.getElementById('add-modal-input').focus();
+                         document.getElementById('add-modal-input').select();
                     }
 
                     // --- HELPERS ---
