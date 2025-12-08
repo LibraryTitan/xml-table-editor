@@ -610,6 +610,21 @@ export class XmlTableEditorProvider implements vscode.CustomTextEditorProvider {
                         area.addEventListener('blur', () => commitEdit());
                         area.addEventListener('keydown', (e) => {
                             if (tabJustPressed && e.key === 'Tab') return;  // Ignore Tab if it was just pressed
+                            
+                            // Wrap selection with $ when $ is pressed
+                            if (e.key === '$') {
+                                const start = area.selectionStart;
+                                const end = area.selectionEnd;
+                                if (start !== end) {  // There's a selection
+                                    e.preventDefault();
+                                    const selectedText = area.value.substring(start, end);
+                                    const wrappedText = '$' + selectedText + '$';
+                                    area.value = area.value.substring(0, start) + wrappedText + area.value.substring(end);
+                                    // Place cursor after the wrapped text
+                                    area.selectionStart = area.selectionEnd = start + wrappedText.length;
+                                }
+                            }
+                            
                             if (e.key === 'Escape') { 
                                 e.preventDefault(); 
                                 const { r, c } = editingLocation;
@@ -825,9 +840,9 @@ export class XmlTableEditorProvider implements vscode.CustomTextEditorProvider {
                                     div.innerText = val;
                                     if(val.includes('\\\\') && !val.includes('$')) div.innerText = '$' + val + '$';
                                     try { if(typeof renderMathInElement !== 'undefined') renderMathInElement(div, {delimiters: [{left:'$', right:'$', display:false}]}); } catch(e){}
-                                    // After KaTeX renders, replace \\ with line breaks
+                                    // After KaTeX renders, replace \\ with line breaks and remove surrounding spaces
                                     const htmlContent = div.innerHTML;
-                                    div.innerHTML = htmlContent.replace(/\\\\/g, '<br>');
+                                    div.innerHTML = htmlContent.replace(/\s*\\\\\s*/g, '<br>');
                                 } else {
                                     div.innerText = val;
                                 }
