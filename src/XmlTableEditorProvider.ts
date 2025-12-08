@@ -1215,6 +1215,7 @@ export class XmlTableEditorProvider implements vscode.CustomTextEditorProvider {
 
                     // -- MOVE MODAL --
                     function openMoveModal(colName) {
+                        if (editingLocation) commitEdit();  // Close any active cell editor
                         document.getElementById('ctx-menu').style.display = 'none';
                         pendingMoveCol = colName;
                         document.getElementById('move-modal-title').innerText = "Move: " + colName;
@@ -1230,6 +1231,7 @@ export class XmlTableEditorProvider implements vscode.CustomTextEditorProvider {
                     }
                     function closeMoveModal() { document.getElementById('move-modal-overlay').style.display = 'none'; }
                     function openMoveRowModal(rowIndex) {
+                        if (editingLocation) commitEdit();  // Close any active cell editor
                         document.getElementById('ctx-menu').style.display = 'none';
                         pendingMoveRow = rowIndex;
                         document.getElementById('move-modal-title').innerText = "Move Row " + (rowIndex + 1);
@@ -1301,6 +1303,7 @@ export class XmlTableEditorProvider implements vscode.CustomTextEditorProvider {
                     }
                     window.addRow = function() {
                         if (tables.length === 0) return;
+                        if (editingLocation) commitEdit();  // Close any active cell editor
                         pendingAddType = 'row';
                         document.getElementById('add-modal-title').innerText = 'Add Rows';
                         document.getElementById('add-modal-input').value = '1';
@@ -1310,6 +1313,7 @@ export class XmlTableEditorProvider implements vscode.CustomTextEditorProvider {
                     }
                     window.addCol = function() {
                          if (tables.length === 0) return;
+                         if (editingLocation) commitEdit();  // Close any active cell editor
                          pendingAddType = 'col';
                          document.getElementById('add-modal-title').innerText = 'Add Columns';
                          document.getElementById('add-modal-input').value = '1';
