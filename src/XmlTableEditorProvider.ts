@@ -498,10 +498,18 @@ export class XmlTableEditorProvider implements vscode.CustomTextEditorProvider {
                         if (editingLocation) {
                             commitEdit(0, 0, true);  // true = skipEditing
                         }
-                        isDragging = true;
-                        selection.start = { r, c };
-                        selection.end = { r, c };
-                        updateSelectionVisuals();
+                        
+                        if (e.shiftKey && selection.start) {
+                            // Shift+Click: extend selection to form rectangle from start to clicked cell
+                            selection.end = { r, c };
+                            updateSelectionVisuals();
+                        } else {
+                            // Normal click: start new selection
+                            isDragging = true;
+                            selection.start = { r, c };
+                            selection.end = { r, c };
+                            updateSelectionVisuals();
+                        }
                     });
 
                     wrapper.addEventListener('mouseup', (e) => {
@@ -553,6 +561,15 @@ export class XmlTableEditorProvider implements vscode.CustomTextEditorProvider {
                         if (tabJustPressed) return;  // Skip if Tab was just pressed
                         if (e.key === 'Delete' || e.key === 'Backspace') { deleteSelection(); e.preventDefault(); return; }
                         if (e.key === 'Enter') { e.preventDefault(); if (selection.start) startEditing(selection.start.r, selection.start.c); return; }
+                        
+                        // Shift+Arrow: extend selection
+                        if (e.shiftKey && ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.key)) { 
+                            e.preventDefault();
+                            extendSelection(e.key);
+                            return;
+                        }
+                        
+                        // Regular Arrow: move selection
                         if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.key)) { e.preventDefault(); moveSelection(e.key); return; }
                         // Cut: Ctrl+X
                         if ((e.ctrlKey || e.metaKey) && e.key === 'x') { e.preventDefault(); cutSelection(); return; }
@@ -591,6 +608,27 @@ export class XmlTableEditorProvider implements vscode.CustomTextEditorProvider {
                         if (c < 0) c = 0; if (c > maxC) c = maxC;
 
                         selection.start = { r, c }; selection.end = { r, c };
+                        updateSelectionVisuals();
+                        const el = document.querySelector('td[data-r="' + r + '"][data-c="' + c + '"]');
+                        if(el) el.scrollIntoView({block: "nearest", inline: "nearest"});
+                    }
+
+                    function extendSelection(key) {
+                        if (!selection.start || !selection.end) return;
+                        let r = selection.end.r, c = selection.end.c;
+                        if (key === 'ArrowUp') r--;
+                        if (key === 'ArrowDown') r++;
+                        if (key === 'ArrowLeft') c--;
+                        if (key === 'ArrowRight') c++;
+                        
+                        const table = tables[activeTableIndex];
+                        if (!table || !table.data) return;
+                        const maxR = table.data.length - 1, maxC = manualColOrder.length - 1;
+                        if (r < 0) r = 0; if (r > maxR) r = maxR;
+                        if (c < 0) c = 0; if (c > maxC) c = maxC;
+
+                        // Move the end point while keeping start fixed
+                        selection.end = { r, c };
                         updateSelectionVisuals();
                         const el = document.querySelector('td[data-r="' + r + '"][data-c="' + c + '"]');
                         if(el) el.scrollIntoView({block: "nearest", inline: "nearest"});
