@@ -290,6 +290,7 @@ export class XmlTableEditorProvider implements vscode.CustomTextEditorProvider {
                     let activeTableName = null;  // Preserve active table by name, not just index
                     let tabJustPressed = false;  // Flag to prevent Tab from triggering edit mode
                     let pendingAddType = null;  // 'row' or 'col'
+                    let clipboardData = null;  // For cut/paste operations (Ctrl+X/Ctrl+V)
                     
                     // Helper functions to get/set frozen rows/cols per table
                     function getFrozenRows() { return frozenRowsPerTable[activeTableIndex] || 0; }
@@ -553,6 +554,10 @@ export class XmlTableEditorProvider implements vscode.CustomTextEditorProvider {
                         if (e.key === 'Delete' || e.key === 'Backspace') { deleteSelection(); e.preventDefault(); return; }
                         if (e.key === 'Enter') { e.preventDefault(); if (selection.start) startEditing(selection.start.r, selection.start.c); return; }
                         if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.key)) { e.preventDefault(); moveSelection(e.key); return; }
+                        // Cut: Ctrl+X
+                        if ((e.ctrlKey || e.metaKey) && e.key === 'x') { e.preventDefault(); cutSelection(); return; }
+                        // Paste: Ctrl+V (custom clipboard, not system clipboard)
+                        if ((e.ctrlKey || e.metaKey) && e.key === 'v') { e.preventDefault(); pasteSelection(); return; }
                         if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) { if (selection.start) { startEditing(selection.start.r, selection.start.c, e.key); e.preventDefault(); } }
                     });
 
@@ -726,6 +731,68 @@ export class XmlTableEditorProvider implements vscode.CustomTextEditorProvider {
                         }
                         updateDocumentInternal(currentJson);
                         renderActiveTable();
+                    }
+
+                    function cutSelection() {
+                        if (!selection.start || !selection.end) return;
+                        const r1 = Math.min(selection.start.r, selection.end.r);
+                        const r2 = Math.max(selection.start.r, selection.end.r);
+                        const c1 = Math.min(selection.start.c, selection.end.c);
+                        const c2 = Math.max(selection.start.c, selection.end.c);
+                        const table = tables[activeTableIndex];
+                        
+                        // Store the data in clipboard
+                        clipboardData = {
+                            rows: r2 - r1 + 1,
+                            cols: c2 - c1 + 1,
+                            data: []
+                        };
+                        
+                        for(let r = r1; r <= r2; r++) {
+                            const row = [];
+                            for(let c = c1; c <= c2; c++) {
+                                const key = manualColOrder[c];
+                                row.push(table.data[r][key] || "");
+                            }
+                            clipboardData.data.push(row);
+                        }
+                        
+                        // Clear the selection
+                        deleteSelection();
+                    }
+
+                    function pasteSelection() {
+                        if (!clipboardData || !selection.start) return;
+                        const table = tables[activeTableIndex];
+                        const startR = selection.start.r;
+                        const startC = selection.start.c;
+                        
+                        // Paste data from clipboard
+                        for(let r = 0; r < clipboardData.data.length; r++) {
+                            const targetR = startR + r;
+                            if (targetR >= table.data.length) {
+                                // Add new row if needed
+                                let newRow = {};
+                                if(table.data.length > 0) {
+                                    Object.keys(table.data[0]).forEach(k => { if(!k.startsWith('@_')) newRow[k] = ""; });
+                                }
+                                table.data.push(newRow);
+                            }
+                            
+                            for(let c = 0; c < clipboardData.data[r].length; c++) {
+                                const targetC = startC + c;
+                                if (targetC < manualColOrder.length) {
+                                    const key = manualColOrder[targetC];
+                                    table.data[targetR][key] = clipboardData.data[r][c];
+                                }
+                            }
+                        }
+                        
+                        updateDocumentInternal(currentJson);
+                        renderActiveTable();
+                        
+                        // Clear clipboard after paste (like cut/paste behavior)
+                        clipboardData = null;
                     }
 
                     // --- RENDER ---
