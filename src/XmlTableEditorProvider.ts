@@ -20,13 +20,17 @@ export class XmlTableEditorProvider implements vscode.CustomTextEditorProvider {
         webviewPanel: vscode.WebviewPanel,
         _token: vscode.CancellationToken
     ): Promise<void> {
+        console.log('[XmlTableEditor] resolveCustomTextEditor called for:', document.uri.toString());
         webviewPanel.webview.options = { enableScripts: true };
+        console.log('[XmlTableEditor] Setting webview HTML...');
         webviewPanel.webview.html = this.getHtmlForWebview(webviewPanel.webview);
+        console.log('[XmlTableEditor] Webview HTML set successfully');
 
         let isUpdatingDocument = false;  // Track if we're the source of document changes
         let lastWrittenXml = '';  // Track the last XML we wrote
 
         function updateWebview() {
+            console.log('[XmlTableEditor] updateWebview called');
             const text = document.getText();
             const parser = new XMLParser({
                 ignoreAttributes: false,
@@ -35,29 +39,37 @@ export class XmlTableEditorProvider implements vscode.CustomTextEditorProvider {
             });
             
             try {
+                console.log('[XmlTableEditor] Parsing XML, text length:', text.length);
                 const jsonObj = parser.parse(text);
+                console.log('[XmlTableEditor] XML parsed successfully, posting message to webview');
                 webviewPanel.webview.postMessage({
                     type: 'updateJson',
                     data: jsonObj,
                     isInternalUpdate: isUpdatingDocument  // Pass flag to webview
                 });
+                console.log('[XmlTableEditor] Message posted to webview');
             } catch (e) {
-                console.error("Error parsing XML", e);
+                console.error("[XmlTableEditor] Error parsing XML", e);
             }
         }
 
         const changeDocumentSubscription = vscode.workspace.onDidChangeTextDocument(e => {
             if (e.document.uri.toString() === document.uri.toString()) {
+                console.log('[XmlTableEditor] Document changed');
                 const currentText = document.getText();
                 // If we're updating the document, send the flag to webview before clearing it
                 if (isUpdatingDocument) {
+                    console.log('[XmlTableEditor] Internal update detected, calling updateWebview');
                     updateWebview();  // This will include isInternalUpdate: true
                     lastWrittenXml = currentText;  // Update what we think we wrote
                     isUpdatingDocument = false;
                 } else if (currentText !== lastWrittenXml) {
                     // Only reload if the content actually changed (external modification)
+                    console.log('[XmlTableEditor] External change detected, reloading');
                     updateWebview();
                     lastWrittenXml = currentText;
+                } else {
+                    console.log('[XmlTableEditor] Document changed but content same, ignoring');
                 }
                 // If content is the same, do nothing (user just saved our own changes)
             }
@@ -69,13 +81,17 @@ export class XmlTableEditorProvider implements vscode.CustomTextEditorProvider {
 
         // When the webview becomes visible, update it
         webviewPanel.onDidChangeViewState(e => {
+            console.log('[XmlTableEditor] Webview visibility changed, visible:', e.webviewPanel.visible);
             if (e.webviewPanel.visible && !isUpdatingDocument) {
+                console.log('[XmlTableEditor] Webview visible and not updating, calling updateWebview');
                 updateWebview();
             }
         });
 
         webviewPanel.webview.onDidReceiveMessage(e => {
+            console.log('[XmlTableEditor] Message received from webview, type:', e.type);
             if (e.type === 'updateDocument') {
+                console.log('[XmlTableEditor] Processing updateDocument message');
                 isUpdatingDocument = true;
                 // Build XML to track what we're writing
                 const builder = new XMLBuilder({
@@ -86,15 +102,18 @@ export class XmlTableEditorProvider implements vscode.CustomTextEditorProvider {
                 });
                 try {
                     lastWrittenXml = builder.build(e.json);
+                    console.log('[XmlTableEditor] XML built successfully');
                 } catch (error) {
-                    console.error('Failed to build XML preview', error);
+                    console.error('[XmlTableEditor] Failed to build XML preview', error);
                 }
                 this.updateTextDocument(document, e.json);
             }
         });
 
+        console.log('[XmlTableEditor] Calling initial updateWebview');
         updateWebview();
         lastWrittenXml = document.getText();  // Initialize with current file contents
+        console.log('[XmlTableEditor] resolveCustomTextEditor initialization complete');
     }
 
     private updateTextDocument(document: vscode.TextDocument, jsonContent: any) {
@@ -269,7 +288,9 @@ export class XmlTableEditorProvider implements vscode.CustomTextEditorProvider {
                 </div>
 
                 <script>
+                    console.log('[Webview] Script starting');
                     const vscode = acquireVsCodeApi();
+                    console.log('[Webview] vscode API acquired');
                     let currentJson = {};
                     let tables = [];
                     let activeTableIndex = 0;
@@ -356,12 +377,16 @@ export class XmlTableEditorProvider implements vscode.CustomTextEditorProvider {
                     });
 
                     window.addEventListener('message', event => {
+                        console.log('[Webview] Message received:', event.data.type);
                         if (event.data.type === 'updateJson') {
+                            console.log('[Webview] updateJson message, analyzing data...');
                             currentJson = event.data.data ? event.data.data : event.data;
                             // Check if extension marked this as internal update, or if it's within 2000ms of our update
                             const isInternalUpdate = event.data.isInternalUpdate || (Date.now() - lastInternalUpdateTime) < 2000;
+                            console.log('[Webview] isInternalUpdate:', isInternalUpdate);
                             // Only reset state if this is an external file load (not our internal update)
                             if (!isInternalUpdate) {
+                                console.log('[Webview] External load detected, resetting state');
                                 activeTableIndex = 0;
                                 manualColOrder = [];
                                 selection = { start: null, end: null };
@@ -372,10 +397,12 @@ export class XmlTableEditorProvider implements vscode.CustomTextEditorProvider {
                                 rowHeights = {};
                                 analyzeData(currentJson);
                                 activeTableName = tables.length > 0 ? tables[0].name : null;
+                                console.log('[Webview] Tables found:', tables.length);
                                 renderTabs();
                                 renderActiveTable();
                             } else {
                                 // Internal update: re-analyze to get any new tables, but preserve state
+                                console.log('[Webview] Internal update, preserving state');
                                 const prevTableName = activeTableName;
                                 analyzeData(currentJson);
                                 // Restore to same table by name
@@ -835,11 +862,13 @@ export class XmlTableEditorProvider implements vscode.CustomTextEditorProvider {
 
                     // --- RENDER ---
                     function renderActiveTable() {
+                        console.log('[Webview] renderActiveTable called, activeTableIndex:', activeTableIndex, 'tables.length:', tables.length);
                         const container = document.getElementById('table-container');
                         const infoMsg = document.getElementById('info-msg');
                         
                         container.innerHTML = '';
                         if (tables.length === 0 || activeTableIndex >= tables.length) {
+                            console.log('[Webview] No tables to render');
                             // Check if it's an Office format error (infoMsg will already be styled with color/bgcolor)
                             if (!infoMsg.style.backgroundColor || infoMsg.style.backgroundColor === '') {
                                 infoMsg.classList.add('visible');
@@ -848,6 +877,7 @@ export class XmlTableEditorProvider implements vscode.CustomTextEditorProvider {
                             return;
                         }
                         
+                        console.log('[Webview] Rendering table:', tables[activeTableIndex].name);
                         infoMsg.classList.remove('visible');
 
                         const currentTable = tables[activeTableIndex];
@@ -864,6 +894,7 @@ export class XmlTableEditorProvider implements vscode.CustomTextEditorProvider {
                             if(typeof r === 'object') Object.keys(r).forEach(k => { if(!k.startsWith('@_') && k!=='#text') uniqueKeys.add(k); });
                         });
                         const detectedKeys = Array.from(uniqueKeys);
+                        console.log('[Webview] Detected keys:', detectedKeys);
 
                         if (manualColOrder.length === 0) {
                             manualColOrder = detectedKeys;
@@ -1437,6 +1468,7 @@ export class XmlTableEditorProvider implements vscode.CustomTextEditorProvider {
                         return keys.some(k => k.startsWith('@_') && (k.includes('mso') || k.includes('xmlns')));
                     }
                     function analyzeData(json) { 
+                        console.log('[Webview] analyzeData called, json keys:', Object.keys(json));
                         tables = [];
                         const infoMsg = document.getElementById('info-msg');
                         
@@ -1450,6 +1482,7 @@ export class XmlTableEditorProvider implements vscode.CustomTextEditorProvider {
                         infoMsg.innerHTML = 'Loading...';
                         
                         if (isOfficeXmlFormat(json)) {
+                            console.log('[Webview] Office XML format detected, showing error');
                             // Show error message for Office XML format
                             infoMsg.classList.add('visible');
                             infoMsg.style.color = '#d97706';
@@ -1460,10 +1493,13 @@ export class XmlTableEditorProvider implements vscode.CustomTextEditorProvider {
                             infoMsg.innerHTML = '<strong>⚠️ Incompatible Format Detected</strong><br><br>This file appears to have been opened and modified by Microsoft Office XML editor, which converted it to Office proprietary Excel XML format.<br><br>This format is no longer compatible with this extension.<br><br><strong>Solution:</strong> Please restore from your backup file or convert the data back to the original custom XML format.';
                             return;
                         }
+                        console.log('[Webview] Discovering generic tables...');
                         discoverGenericTables(json);
+                        console.log('[Webview] Tables discovered:', tables.length);
                         
                         // If no tables found, create a default 5x5 empty table
                         if (tables.length === 0) {
+                            console.log('[Webview] No tables found, creating default table');
                             const defaultData = [];
                             for (let i = 0; i < 5; i++) {
                                 const row = {};
@@ -1481,9 +1517,11 @@ export class XmlTableEditorProvider implements vscode.CustomTextEditorProvider {
                     }
                     function discoverGenericTables(obj, path = []) {
                         if (Array.isArray(obj)) {
+                            console.log('[Webview] Found array at path:', path.join('.'), 'length:', obj.length);
                             if (obj.length > 0 && typeof obj[0] === 'object') {
                                 let name = path.length > 0 ? path[path.length - 1] : 'Table';
                                 if (path.length > 1) name = path[path.length - 1]; 
+                                console.log('[Webview] Adding table:', name);
                                 tables.push({ name: name, data: obj, path: path });
                             }
                             obj.forEach(item => { if (typeof item === 'object') Object.keys(item).forEach(k => { if (!k.startsWith('@_')) discoverGenericTables(item[k], [...path, k]); }); });
@@ -1492,9 +1530,14 @@ export class XmlTableEditorProvider implements vscode.CustomTextEditorProvider {
                         if (typeof obj === 'object' && obj !== null) { Object.keys(obj).forEach(k => { if (!k.startsWith('@_')) discoverGenericTables(obj[k], [...path, k]); }); }
                     }
                     function renderTabs() {
+                        console.log('[Webview] renderTabs called, tables.length:', tables.length);
                         const tabBar = document.getElementById('tab-bar');
                         tabBar.innerHTML = '';
-                        if (tables.length === 0) return;
+                        if (tables.length === 0) {
+                            console.log('[Webview] No tables to render tabs for');
+                            return;
+                        }
+                        console.log('[Webview] Rendering', tables.length, 'tabs');
                         tables.forEach((table, index) => {
                             const tab = document.createElement('div');
                             tab.className = 'tab';
@@ -1507,6 +1550,7 @@ export class XmlTableEditorProvider implements vscode.CustomTextEditorProvider {
                             
                             // On Click: Switch tab AND reset column order explicitly
                             tab.onclick = () => { 
+                                console.log('[Webview] Tab clicked, switching to index:', index);
                                 activeTableIndex = index; 
                                 activeTableName = table.name;
                                 manualColOrder = []; // Reset only on click
