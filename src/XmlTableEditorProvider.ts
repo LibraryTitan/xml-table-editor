@@ -805,8 +805,29 @@ export class XmlTableEditorProvider implements vscode.CustomTextEditorProvider {
                         const c1 = Math.min(selection.start.c, selection.end.c);
                         const c2 = Math.max(selection.start.c, selection.end.c);
                         const table = tables[activeTableIndex];
+                        const TAB = String.fromCharCode(9);
+                        const NEWLINE = String.fromCharCode(10);
                         
-                        // Store the data in clipboard
+                        // Build the text to copy in the same format as copy event
+                        let clipText = "";
+                        for (let r = r1; r <= r2; r++) {
+                            let rowStr = [];
+                            for (let c = c1; c <= c2; c++) {
+                                let key = manualColOrder[c];
+                                let val = table.data[r][key];
+                                if (typeof val === 'object') val = val['#text'] || "";
+                                if (val === undefined) val = "";
+                                rowStr.push(val);
+                            }
+                            clipText += rowStr.join(TAB) + (r < r2 ? NEWLINE : "");
+                        }
+                        
+                        // Write to system clipboard using Clipboard API
+                        navigator.clipboard.writeText(clipText).catch(err => {
+                            console.error('Failed to write to clipboard:', err);
+                        });
+                        
+                        // Store the data in clipboard for internal use
                         clipboardData = {
                             rows: r2 - r1 + 1,
                             cols: c2 - c1 + 1,
